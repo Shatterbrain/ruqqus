@@ -19,7 +19,7 @@ services:
     ports:
       - 8000:8000
     volumes:
-      - .:/srv:z
+      - .:/root/ruqqus:z
     depends_on:
       - db
       - redis
