@@ -28,7 +28,7 @@ from redis import BlockingConnectionPool
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 
-_version = "2.24.0"
+_version = "2.29.4"
 
 app = Flask(__name__,
             template_folder='./templates',
@@ -59,9 +59,10 @@ app.config["SESSION_COOKIE_SECURE"] = bool(int(environ.get("FORCE_HTTPS", 1)))
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
 app.config["PERMANENT_SESSION_LIFETIME"] = 60 * 60 * 24 * 365
-app.config["SESSION_REFRESH_EACH_REQUEST"] = False
+app.config["SESSION_REFRESH_EACH_REQUEST"] = True
 
 app.config["FORCE_HTTPS"] = int(environ.get("FORCE_HTTPS", 1))
+app.config["DISABLE_SIGNUPS"]=int(environ.get("DISABLE_SIGNUPS",0))
 
 app.jinja_env.cache = {}
 
@@ -78,6 +79,7 @@ app.config["CACHE_DIR"] = environ.get("CACHE_DIR", "ruqquscache")
 app.config["HCAPTCHA_SITEKEY"] = environ.get("HCAPTCHA_SITEKEY")
 app.config["HCAPTCHA_SECRET"] = environ.get(
     "HCAPTCHA_SECRET").lstrip().rstrip()
+app.config["SIGNUP_HOURLY_LIMIT"]=int(environ.get("SIGNUP_HOURLY_LIMIT",0))
 
 # antispam configs
 app.config["SPAM_SIMILARITY_THRESHOLD"] = float(
@@ -86,6 +88,10 @@ app.config["SPAM_SIMILAR_COUNT_THRESHOLD"] = int(
     environ.get("SPAM_SIMILAR_COUNT_THRESHOLD", 5))
 app.config["SPAM_URL_SIMILARITY_THRESHOLD"] = float(
     environ.get("SPAM_URL_SIMILARITY_THRESHOLD", 0.1))
+app.config["COMMENT_SPAM_SIMILAR_THRESHOLD"] = float(
+    environ.get("COMMENT_SPAM_SIMILAR_THRESHOLD", 0.5))
+app.config["COMMENT_SPAM_COUNT_THRESHOLD"] = int(
+    environ.get("COMMENT_SPAM_COUNT_THRESHOLD", 5))
 
 app.config["CACHE_REDIS_URL"] = environ.get(
     "REDIS_URL").rstrip() if environ.get("REDIS_URL") else None

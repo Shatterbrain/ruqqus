@@ -1,6 +1,7 @@
 import time
 import jinja2
 import pyotp
+import pprint
 from flask import *
 
 from ruqqus.helpers.wrappers import *
@@ -133,10 +134,10 @@ def favicon():
     return send_file("./assets/images/logo/favicon.png")
 
 
-@app.route("/my_info", methods=["GET"])
-@auth_required
-def my_info(v):
-    return render_template("my_info.html", v=v)
+#@app.route("/my_info", methods=["GET"])
+#@auth_required
+#def my_info(v):
+#    return render_template("my_info.html", v=v)
 
 
 @app.route("/about/<path:path>")
@@ -193,7 +194,7 @@ def press_inquiry(v):
                            v=v)
 
 
-@app.route("/info/image_hosts")
+@app.route("/info/image_hosts", methods=["GET"])
 def info_image_hosts():
 
     sites = g.db.query(Domain).filter_by(

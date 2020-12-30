@@ -47,6 +47,13 @@ def ban_user(user_id, v):
 
         user.ban(admin=v, reason=reason)
 
+
+    for x in user.alts:
+        x.ban(admin=v, reason=reason)
+
+
+
+
     send_notification(user, text)
 
     return (redirect(user.url), user)
@@ -62,11 +69,11 @@ def unban_user(user_id, v):
     if not user:
         abort(400)
 
-    alts = request.form.get("alts", False)
-    user.unban(include_alts=alts)
+    user.unban()
 
     send_notification(user,
                       "Your Ruqqus account has been reinstated. Please carefully review and abide by the [terms of service](/help/terms) and [content policy](/help/rules) to ensure that you don't get suspended again.")
+
 
     return (redirect(user.url), user)
 
@@ -98,6 +105,13 @@ def ban_post(post_id, v):
 
     cache.delete_memoized(Board.idlist, post.board)
 
+    ma=ModAction(
+        kind="ban_post",
+        user_id=v.id,
+        target_submission_id=post.id,
+        board_id=post.board_id,
+        )
+    g.db.add(ma)
     return (redirect(post.permalink), post)
 
 
@@ -110,6 +124,15 @@ def unban_post(post_id, v):
 
     if not post:
         abort(400)
+
+    if post.is_banned:
+        ma=ModAction(
+            kind="unban_post",
+            user_id=v.id,
+            target_submission_id=post.id,
+            board_id=post.board_id,
+        )
+        g.db.add(ma)
 
     post.is_banned = False
     post.is_approved = v.id
@@ -181,7 +204,13 @@ def api_ban_comment(c_id, v):
     comment.approved_utc = 0
 
     g.db.add(comment)
-
+    ma=ModAction(
+        kind="ban_comment",
+        user_id=v.id,
+        target_comment_id=comment.id,
+        board_id=comment.post.board_id,
+        )
+    g.db.add(ma)
     return "", 204
 
 
@@ -192,12 +221,21 @@ def api_unban_comment(c_id, v):
     comment = g.db.query(Comment).filter_by(id=base36decode(c_id)).first()
     if not comment:
         abort(404)
+    g.db.add(comment)
+
+    if comment.is_banned:
+        ma=ModAction(
+            kind="unban_comment",
+            user_id=v.id,
+            target_comment_id=comment.id,
+            board_id=comment.post.board_id,
+            )
+        g.db.add(ma)
 
     comment.is_banned = False
     comment.is_approved = v.id
     comment.approved_utc = int(time.time())
 
-    g.db.add(comment)
 
     return "", 204
 
@@ -271,8 +309,22 @@ def mod_self_to_guild(v, bid):
     if not board.has_mod(v):
         mr = ModRelationship(user_id=v.id,
                              board_id=board.id,
-                             accepted=True)
+                             accepted=True,
+                             perm_full=True,
+                             perm_access=True,
+                             perm_config=True,
+                             perm_appearance=True,
+                             perm_content=True)
         g.db.add(mr)
+
+        ma=ModAction(
+            kind="add_mod",
+            user_id=v.id,
+            target_user_id=v.id,
+            board_id=board.id,
+            note="admin action"
+        )
+        g.db.add(ma)
 
     return redirect(f"/+{board.name}/mod/mods")
 
@@ -519,3 +571,39 @@ def admin_dump_cache(v):
     cache.clear()
 
     return jsonify({"message": "Internal cache cleared."})
+
+
+
+@app.route("/admin/ban_domain", methods=["POST"])
+@admin_level_required(4)
+@validate_formkey
+def admin_ban_domain(v):
+
+    domain=request.form.get("domain",'').lstrip().rstrip()
+
+    if not domain:
+        abort(400)
+
+    reason=int(request.form.get("reason",0))
+
+    d_query=domain.replace("_","\_")
+    d=g.db.query(Domain).filter_by(domain=d_query).first()
+    if d:
+        d.can_submit=False
+        d.can_comment=False
+        d.reason=reason
+    else:
+        d=Domain(
+            domain=domain,
+            can_submit=False,
+            can_comment=False,
+            reason=reason,
+            show_thumbnail=False,
+            embed_function=None,
+            embed_template=None
+            )
+
+    g.db.add(d)
+    g.db.commit()
+    return redirect(d.permalink)
+

@@ -250,6 +250,7 @@ def sign_up_get(v):
 @no_cors
 @auth_desired
 def sign_up_post(v):
+
     if v:
         abort(403)
 
@@ -293,11 +294,12 @@ def sign_up_post(v):
 
         return redirect(f"/signup?{urlencode(args)}")
 
-    # check for tokens
-# if now-int(form_timestamp)>120:
-# #print(f"signup fail - {username } - form expired")
+    if app.config["DISABLE_SIGNUPS"]:
+        return new_signup("New account registration is currently closed. Please come back later.")
 
-        return new_signup("There was a problem. Please try again.")
+    if g.db.query(User).filter(User.created_utc>int(time.time())-60*60).count() > 10:
+        return new_signup("We have reached our threshold for new user signups. Please come back later.")
+
     if now - int(form_timestamp) < 5:
         #print(f"signup fail - {username } - too fast")
         return new_signup("There was a problem. Please try again.")
@@ -341,8 +343,7 @@ def sign_up_post(v):
             email=parts[0]
 
 
-    existing_account = g.db.query(User).filter(
-        User.username.ilike(request.form.get("username"))).first()
+    existing_account = get_user(request.form.get("username"), graceful=True)
     if existing_account and existing_account.reserved:
         return redirect(existing_account.permalink)
 

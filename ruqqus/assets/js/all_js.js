@@ -1026,29 +1026,34 @@ var downvote = function(event) {
   
 }
 
-var upvoteButtons = document.getElementsByClassName('upvote-button')
 
-var downvoteButtons = document.getElementsByClassName('downvote-button')
+var register_votes = function() {
+  var upvoteButtons = document.getElementsByClassName('upvote-button')
 
-var voteDirection = 0
+  var downvoteButtons = document.getElementsByClassName('downvote-button')
 
-for (var i = 0; i < upvoteButtons.length; i++) {
-  upvoteButtons[i].addEventListener('click', upvote, false);
-  upvoteButtons[i].addEventListener('keydown', function(event) {
-    if (event.keyCode === 13) {
-      upvote(event)
-    }
-  }, false)
-};
+  var voteDirection = 0
 
-for (var i = 0; i < downvoteButtons.length; i++) {
-  downvoteButtons[i].addEventListener('click', downvote, false);
-  downvoteButtons[i].addEventListener('keydown', function(event) {
-    if (event.keyCode === 13) {
-      downvote(event)
-    }
-  }, false)
-};
+  for (var i = 0; i < upvoteButtons.length; i++) {
+    upvoteButtons[i].addEventListener('click', upvote, false);
+    upvoteButtons[i].addEventListener('keydown', function(event) {
+      if (event.keyCode === 13) {
+        upvote(event)
+      }
+    }, false)
+  };
+
+  for (var i = 0; i < downvoteButtons.length; i++) {
+    downvoteButtons[i].addEventListener('click', downvote, false);
+    downvoteButtons[i].addEventListener('keydown', function(event) {
+      if (event.keyCode === 13) {
+        downvote(event)
+      }
+    }, false)
+  };
+}
+
+register_votes()
 
 /*
 
@@ -1834,11 +1839,13 @@ coin_quote = function() {
 
   var coins = document.getElementById('select-coins');
   var btn = document.getElementById('buy-coin-btn')
+  var promo=document.getElementById('promo-code')
+  var promotext=document.getElementById('promo-text')
 
   coin_count = coins.selectedOptions[0].value
 
   var xhr = new XMLHttpRequest();
-  xhr.open('get', '/shop/get_price?coins='+coin_count)
+  xhr.open('get', '/shop/get_price?coins='+coin_count+'&promo='+promo.value)
 
   xhr.onload=function(){
     var s = 'Buy '+ coin_count + ' Coin';
@@ -1848,40 +1855,11 @@ coin_quote = function() {
     s=s+': $'+JSON.parse(xhr.response)["price"];
 
     btn.value=s;
+
+    promotext.innerText=JSON.parse(xhr.response)["promo"];
   }
   xhr.send()
 }
-
-// Tipping
-/*
-var tipModal = function(event) {
-  console.log('opened modal, tipModal function triggered')
-  var id = event.target.dataset.contentId;
-  var content = event.target.dataset.contentType;
-  var link = event.target.dataset.contentLink;
-
-  var recipient = event.target.dataset.authorUsername;
-
-  var senderPFP = event.target.dataset.vAvatar;
-  var recipientPFP = event.target.dataset.authorAvatar;
-
-  document.getElementById('tip-sender-pfp').src = senderPFP;
-  document.getElementById('tip-recipient-pfp').src = recipientPFP;
-
-  document.getElementById("tip-content-type").innerText = content
-  document.getElementById("tip-recipient-username").innerText = recipient
-
-  document.getElementById("sendTipButton").onclick = function() {
-    post_toast('/gift_'+ content +'/' + id + '?coins=1',
-      callback = function() {
-        location.href = link
-      }
-      )
-  }
-
-  console.log(senderPFP, recipientPFP, id, content, link, recipient)
-}
-*/
 
 
 var tipModal2 = function(id, content, link, recipient, recipientPFP) {
@@ -1903,15 +1881,92 @@ var tipModal2 = function(id, content, link, recipient, recipientPFP) {
   console.log(recipientPFP, id, content, link, recipient)
 }
 
-/*
-var tipModalButtons = document.getElementsByClassName('tip-modal-button')
-
-for (var i = 0; i < tipModalButtons.length; i++) {
-  tipModalButtons[i].addEventListener('click', tipModal, false);
-  tipModalButtons[i].addEventListener('keydown', function(event) {
-    if (event.keyCode === 13) {
-      tipModal(event)
-    }
-  }, false)
+var togglecat = function(sort) {
+  var cbs = document.getElementsByClassName('cat-check');
+  var l = []
+  for (var i=0; i< cbs.length; i++) {
+    l.push(cbs[i].checked)
+  }
+  setTimeout(function(){triggercat(sort, l)}, 1000)
+  return l;
 }
-*/
+
+var triggercat=function(sort, cats) {
+
+  var cbs = document.getElementsByClassName('cat-check');
+  var l = []
+  for (var i=0; i< cbs.length; i++) {
+    l.push(cbs[i].checked)
+  }
+
+
+
+  for (var i=0; i<l.length; i++){
+    if (cats[i] != l[i]){
+      console.log("triggerfail");
+      return false;
+    }
+  }
+
+  console.log("triggercat")
+
+  var catlist=[]
+  for (var i=0; i< cbs.length; i++) {
+    if(cats[i]){
+      catlist.push(cbs[i].dataset.cat);
+    }
+  }
+
+  var url='/inpage/all?sort='+ sort +'&cats=' + catlist.join(',');
+  
+
+  xhr = new XMLHttpRequest();
+  xhr.open('get', url);
+  xhr.withCredentials=true;
+
+  xhr.onload=function(){
+    var l = document.getElementById('posts');
+    l.innerHTML=xhr.response;
+    register_votes();
+  }
+  xhr.send()
+}
+
+
+var permsEdit = function(username, permstring) {
+
+  document.getElementById('permedit-user').innerText = username
+  document.getElementById('edit-perm-username').value = username
+
+  cbs = document.getElementsByClassName('perm-box')
+
+  for (i=0; i< cbs.length; i++) {
+    cbs[i].checked = permstring.includes(cbs[i].dataset.perm) || permstring.includes('full')
+  }
+
+}
+
+var permfull=function() {
+
+  cbs = document.getElementsByClassName('perm-box')
+
+  full = cbs[0]
+
+  if (full.checked) {
+    for (i=1; i< cbs.length; i++) {
+      cbs[i].checked = true;
+    }
+  }
+}
+var permother=function() {
+
+  cbs = document.getElementsByClassName('perm-box')
+
+  full = cbs[0]
+
+  for (i=1; i< cbs.length; i++) {
+    if(cbs[i].checked == false) {
+      full.checked=false;
+    }
+  }
+}
