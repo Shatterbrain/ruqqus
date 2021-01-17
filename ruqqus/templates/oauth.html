@@ -31,7 +31,8 @@
         <input type="hidden" name="permanent" value="{{ permanent}}">
         <input type="hidden" name="client_id" value="{{ application.client_id }}">
         <input type="hidden" name="state" value="{{ state }}">
-
+        <input type="hidden" name="code_challenge" value="{{ code_challenge }}">
+        <input type="hidden" name="code_challenge_method" value="{{ code_challenge_method }}">
         <input type="submit" class="btn btn-primary" id="auth_button" value="Authorize {{ application.app_name }}">
 
         <a href="/" class="btn btn-secondary">No, back to Ruqqus</a>

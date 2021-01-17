@@ -22,20 +22,14 @@
         <div class="body w-lg-100">
 			<label for="edit-{{ app.id }}-author" class="mb-0 w-lg-25">User</label>
 			<input id="edit-{{ app.id }}-author" class="form-control" type="text" name="name" value="{{ app.author.username }}" readonly=readonly>
-
 			<label for="edit-{{ app.id }}-name" class="mb-0 w-lg-25">App Name</label>
 			<input id="edit-{{ app.id }}-name" class="form-control" type="text" name="name" value="{{ app.app_name }}" readonly=readonly>
-
-			{% if app.client_secret %}
-			<label for="edit-{{ app.id }}-client-id" class="mb-0 w-lg-25">Client ID</label>
-			<input id="edit-{{ app.id }}-client-id" class="form-control" type="text" name="name" value="{{ app.client_id }}" readonly="readonly">
-			{% endif %}
-
-
 			<label for="edit-{{ app.id }}-redirect" class="mb-0 w-lg-25">Redirect URI</label>
 			<input id="edit-{{ app.id }}-redirect" class="form-control" type="text" name="redirect_uri" value="{{ app.redirect_uri }}" readonly="readonly">
 			<label for="edit-{{ app.id }}-desc" class="mb-0 w-lg-25">Description</label>
 			<textarea form="edit-app-{{ app.id }}" class="form-control" name="description" id="edit-{{ app.id }}-desc" maxlength="256" readonly="readonly">{{ app.description }}</textarea>
+			<label for="edit-{{ app.id }}-type" class="mb-0 w-lg-25">Client Type</label>
+			<input form="edit-{{ app.id }}" class="form-control" type="text" name="type" id="edit-{{ app.id }}-type" value="{{ 'Public' if app.client_type_public else 'Confidential' }}" readonly="readonly">
 		</div>
 	</div>
 	<div class="footer">

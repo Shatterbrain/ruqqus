@@ -15,6 +15,7 @@ class OauthApp(Base, Stndrd):
     id = Column(Integer, primary_key=True)
     client_id = Column(String(64))
     client_secret = Column(String(128))
+    client_type_public = Column(Boolean, default=False)
     app_name = Column(String(50))
     redirect_uri = Column(String(4096))
     author_id = Column(Integer, ForeignKey("users.id"))
@@ -71,6 +72,8 @@ class ClientAuth(Base, Stndrd):
     scope_guildmaster = Column(Boolean, default=False)
     access_token = Column(String(128))
     refresh_token = Column(String(128))
+    code_challenge = Column(String(128))
+    code_challenge_method = Column(String(32))
     access_token_expire_utc = Column(Integer)
 
     user = relationship("User", lazy="joined")
