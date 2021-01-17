@@ -2,6 +2,7 @@ from urllib.parse import urlparse
 from time import time
 import secrets
 import re
+from hashlib import sha256
 
 from ruqqus.helpers.wrappers import *
 from ruqqus.helpers.base36 import *
@@ -78,6 +79,14 @@ def oauth_authorize_prompt(v):
 
     permanent = bool(request.args.get("permanent"))
 
+    code_challenge = request.args.get("code_challenge")
+    gunicorn_logger.error("code_challenge: %s", code_challenge)
+    code_challenge_method = request.args.get("code_challenge_method")
+    if code_challenge and code_challenge_method != "S256":
+        return jsonify({'oauth_error': 'Only `S256` is supported as a `code_challenge_method`.'})
+    if code_challenge_method and not code_challenge:
+        return jsonify({'oauth_error': '`code_challenge` must be provided.'})
+
     return render_template("oauth.html",
                            v=v,
                            application=application,
@@ -87,6 +96,8 @@ def oauth_authorize_prompt(v):
                            scopes_txt=scopes_txt,
                            redirect_uri=redirect_uri,
                            permanent=int(permanent),
+                           code_challenge=code_challenge,               # TODO: Store in session instead
+                           code_challenge_method=code_challenge_method, #
                            i=random_image()
                            )
 
@@ -135,6 +146,13 @@ def oauth_authorize_post(v):
 
     permanent = bool(int(request.values.get("permanent", 0)))
 
+    code_challenge = request.form.get("code_challenge")                # TODO: Get from session instead
+    code_challenge_method = request.form.get("code_challenge_method")  #
+    if code_challenge and code_challenge_method != "S256":
+        return jsonify({'oauth_error': 'Only `S256` is supported as a `code_challenge_method`.'})
+    if code_challenge_method and not code_challenge:
+        return jsonify({'oauth_error': '`code_challenge` must be provided.'})
+
     new_auth = ClientAuth(
         oauth_client=application.id,
         oauth_code=secrets.token_urlsafe(128)[0:128],
@@ -146,7 +164,9 @@ def oauth_authorize_post(v):
         scope_delete="delete" in scopes,
         scope_vote="vote" in scopes,
         scope_guildmaster="guildmaster" in scopes,
-        refresh_token=secrets.token_urlsafe(128)[0:128] if permanent else None
+        refresh_token=secrets.token_urlsafe(128)[0:128] if permanent else None,
+        code_challenge=code_challenge,
+        code_challenge_method=code_challenge_method
     )
 
     g.db.add(new_auth)
@@ -160,12 +180,12 @@ def oauth_grant():
     This endpoint takes the following parameters:
     * code - The code parameter provided in the redirect
     * client_id - Your client ID
-    * client_secret - your client secret
+    * client_secret - your client secret in confidential apps
+    * code_verifier - to compare to PKCE code_challenge in public apps
     '''
 
     application = g.db.query(OauthApp).filter_by(
-        client_id=request.values.get("client_id"),
-        client_secret=request.values.get("client_secret")).first()
+        client_id=request.values.get("client_id")).first()
     if not application:
         return jsonify(
             {"oauth_error": "Invalid `client_id` or `client_secret`"}), 401
@@ -186,6 +206,33 @@ def oauth_grant():
 
         if not auth:
             return jsonify({"oauth_error": "Invalid code"}), 401
+
+        if application.client_type_public:
+            if not auth.code_challenge:
+                raise Exception("`ClientAuth`s for public applications are expected to have a `code_challenge`.")
+            if auth.code_challenge_method != "S256":
+                raise Exception("Only `S256` is supported as a `code_challenge_method`")
+            code_verifier = request.values.get("code_verifier")
+            if not code_verifier:
+                return jsonify({"oauth_error": "`code_verifier` required"}), 400
+            gunicorn_logger.error("code_verifier: %s", code_verifier)
+            verification = (
+                secrets.base64.b64encode(
+                    sha256(code_verifier.encode("utf-8")).digest()
+                )
+                .decode("utf-8")
+                .replace("/", "_")
+                .replace("+", "-")
+                .replace("=", "")
+                .replace("$", "")
+            )
+            if verification != auth.code_challenge:
+                gunicorn_logger.error("failed verification: %s", verification)
+                return jsonify({"oauth_error": "`code_verifier` failed the `code_challenge`."}), 403
+        else:
+            if request.values.get("client_secret") != application.client_secret:
+                return jsonify({"oauth_error": "Invalid `client_id` or `client_secret`."}), 403
+
 
         auth.oauth_code = None
         auth.access_token = secrets.token_urlsafe(128)[0:128]
@@ -243,11 +290,21 @@ def oauth_grant():
 @is_not_banned
 def request_api_keys(v):
 
+    client_type = request.form.get("client_type")
+    gunicorn_logger.error(client_type)
+    if client_type == "public":
+        client_type_public = True
+    elif client_type == "confidential":
+        client_type_public = False
+    else:
+        return "Invalid `client_type`", 400
+
     new_app = OauthApp(
         app_name=request.form.get('name'),
         redirect_uri=request.form.get('redirect_uri'),
         author_id=v.id,
-        description=request.form.get("description")[0:256]
+        description=request.form.get("description")[0:256],
+        client_type_public=client_type_public
     )
 
     g.db.add(new_app)
@@ -306,7 +363,8 @@ def admin_app_approve(v, aid):
     app = g.db.query(OauthApp).filter_by(id=base36decode(aid)).first()
 
     app.client_id = secrets.token_urlsafe(64)[0:64]
-    app.client_secret = secrets.token_urlsafe(128)[0:128]
+    if not app.client_type_public:
+        app.client_secret = secrets.token_urlsafe(128)[0:128]
 
     g.db.add(app)
 
@@ -384,15 +442,15 @@ def reroll_oauth_tokens(aid, v):
         abort(403)
 
     a.client_id = secrets.token_urlsafe(64)[0:64]
-    a.client_secret = secrets.token_urlsafe(128)[0:128]
+    if not a.client_type_public:
+        a.client_secret = secrets.token_urlsafe(128)[0:128]
 
     g.db.add(a)
 
-    return jsonify({"message": "Tokens Rerolled",
-                    "id": a.client_id,
-                    "secret": a.client_secret
-                    }
-                   )
+    result = {"message": "Tokens Rerolled", "id": a.client_id}
+    if not a.client_type_public:
+        result["secret"] = a.client_secret
+    return jsonify(result)
 
 
 @app.route("/oauth/rescind/<aid>", methods=["POST"])
