@@ -20,12 +20,13 @@ In the [apps tab of Ruqqus settings](/settings/apps), fill in and submit the for
 * an application name
 * a Redirect URI, or a comma-separated list of redirect URIs. May not use HTTP unless using localhost (use HTTPS instead).
 * a brief description of what your application is intended to do
+* client type - use Confidential for apps like bots that will store a `client_secret` in a server, or use Public for apps like third-party clients (SPA, Native App) that run directly on the user's machine.
 
-Don't worry too much about accuracy; you will be able to change all of these later.
+All of these can be changed later, except for client type.
 
 Ruqqus administrators will review and approve or deny your request for API keys. You'll know when your request has been approved when a client ID and secret appear in your application information.
 
-DO NOT reveal your Client Secret. Anyone with your Client Secret will be able to pretend to be you. You are responsible for keeping your Client Secret a secret!
+With Confidential apps, DO NOT reveal your Client Secret. Anyone with your Client Secret will be able to pretend to be you. You are responsible for keeping your Client Secret a secret!
 
 <img src="/assets/images/illustrations/app.png" style="border:1px solid #805ad5">
 
@@ -38,6 +39,24 @@ Send your user to `https://ruqqus.com/oauth/authorize`, with the following URL p
 * `state` - This is your own anti-cross-site-forgery token. We don't do anything with this, except give it to the user to pass back to you later. You are responsible for generating and validating the state token.
 * `scope` - A comma-separated list of permission scopes that you are requesting. Valid scopes are: `identity`, `create`, `read`, `update`, `delete`, `vote`, and `guildmaster`.
 * `permanent` - optional. Set to `true` if you are requesting indefinite access. Omit if not.
+
+### Extra URL parameters for Public apps:
+
+* `code_challenge_method` - Set to `S256`. This tells the server the `code_challenge` will be have been hashed with `sha256`.
+* `code_challenge` - Generate a URL-safe random string and store it in a local variable as `code_verifier`. Then hash it with `sha256` - this is your `code_challenge`.
+
+Generating a `code_challenge` in Python:
+
+<pre>
+	import os
+	from base64 import urlsafe_b64encode
+	from hashlib import sha256
+
+	verifier_bytes = os.urandom(32)
+	code_verifier = urlsafe_b64encode(verifier_bytes).decode("utf-8").rstrip("=")
+	# Keep the `code_verifier`. You'll need it later.
+	code_challenge = urlsafe_b64encode(sha256(verifier_bytes).digest()).decode("utf-8").rstrip("=")
+</pre>
 
 If done correctly, the user will see that your application wants to access their Ruqqus account, and be prompted to approve or deny the request.
 
@@ -57,9 +76,13 @@ Validate the state token. How you do this is up to you.
 Make a POST request to `https://ruqqus.com/oauth/grant`. Include the following form parameters:
 
 * `client_id` - Your application's Client ID
-* `client_secret` - Your application's Client Secret
+* `client_secret` - Confidential apps only. Your application's Client Secret
 * `grant_type` - Set to the word "code"
 * `code` - The `code` parameter that was given to you in the previous step.
+
+### Extra form parameters for Public apps:
+
+* `code_verifier` - The random code you used to generate your `code_challenge` in Step 2.
 
 Python example:
 
@@ -72,9 +95,10 @@ Python example:
 	headers={"User-Agent": "Porpl Reader v1 by @captainmeta4"}
 	url="https://ruqqus.com/oauth/grant"
 	data={"client_id": my_client_id,
-		  "client_secret": my_client_secret,
+		  "client_secret": my_client_secret,  #Exclude if Public
 		  "grant_type": "code",
-		  "code": code
+		  "code": code,
+		  # "code_verifier": code_verifier,  #Include if Public
 		  }
 
 	r=requests.post(url, headers=headers, data=data)
