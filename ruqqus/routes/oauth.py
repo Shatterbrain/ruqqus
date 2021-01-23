@@ -80,7 +80,6 @@ def oauth_authorize_prompt(v):
     permanent = bool(request.args.get("permanent"))
 
     code_challenge = request.args.get("code_challenge")
-    gunicorn_logger.error("code_challenge: %s", code_challenge)
     code_challenge_method = request.args.get("code_challenge_method")
     if code_challenge and code_challenge_method != "S256":
         return jsonify({'oauth_error': 'Only `S256` is supported as a `code_challenge_method`.'})
@@ -191,8 +190,10 @@ def oauth_grant():
             {"oauth_error": "Invalid `client_id` or `client_secret`"}), 401
     if application.is_banned:
         return jsonify({"oauth_error": f"Application `{application.app_name}` is suspended."}), 403
+    if application.client_secret != request.values.get("client_secret"):
+        return jsonify({"oauth_error": "Invalid `client_id` or `client_secret`."}), 403
 
-    if request.values.get("grant_type") == "code":
+    if request.values.get("grant_type") == "code":  # Should be "authorization_code" per https://tools.ietf.org/html/rfc6749#section-4.1.3
 
         code = request.values.get("code")
         if not code:
@@ -215,24 +216,15 @@ def oauth_grant():
             code_verifier = request.values.get("code_verifier")
             if not code_verifier:
                 return jsonify({"oauth_error": "`code_verifier` required"}), 400
-            gunicorn_logger.error("code_verifier: %s", code_verifier)
             verification = (
-                secrets.base64.b64encode(
+                secrets.base64.urlsafe_b64encode(
                     sha256(code_verifier.encode("utf-8")).digest()
                 )
                 .decode("utf-8")
-                .replace("/", "_")
-                .replace("+", "-")
                 .replace("=", "")
-                .replace("$", "")
             )
             if verification != auth.code_challenge:
-                gunicorn_logger.error("failed verification: %s", verification)
                 return jsonify({"oauth_error": "`code_verifier` failed the `code_challenge`."}), 403
-        else:
-            if request.values.get("client_secret") != application.client_secret:
-                return jsonify({"oauth_error": "Invalid `client_id` or `client_secret`."}), 403
-
 
         auth.oauth_code = None
         auth.access_token = secrets.token_urlsafe(128)[0:128]
@@ -254,7 +246,7 @@ def oauth_grant():
 
         return jsonify(data)
 
-    elif request.values.get("grant_type") == "refresh":
+    elif request.values.get("grant_type") == "refresh":  # Should be "refresh_token" per https://tools.ietf.org/html/rfc6749#section-6
 
         refresh_token = request.values.get('refresh_token')
         if not refresh_token:
@@ -267,8 +259,9 @@ def oauth_grant():
         ).first()
 
         if not auth:
+            # The refresh_token may have been stolen, so invalidate all refresh_tokens for this client_id + user_id 
             return jsonify({"oauth_error": "Invalid refresh_token"}), 401
-
+        
         auth.access_token = secrets.token_urlsafe(128)[0:128]
         auth.access_token_expire_utc = int(time.time()) + 60 * 60
 
@@ -291,7 +284,6 @@ def oauth_grant():
 def request_api_keys(v):
 
     client_type = request.form.get("client_type")
-    gunicorn_logger.error(client_type)
     if client_type == "public":
         client_type_public = True
     elif client_type == "confidential":
