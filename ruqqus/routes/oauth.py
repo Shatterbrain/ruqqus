@@ -78,13 +78,18 @@ def oauth_authorize_prompt(v):
         return jsonify({'oauth_error': 'state argument required'}), 400
 
     permanent = bool(request.args.get("permanent"))
+    if permanent and application.client_type_public:
+        return jsonify({'oauth_error': '`permanent` is not yet supported for public apps.'}), 400
 
     code_challenge = request.args.get("code_challenge")
     code_challenge_method = request.args.get("code_challenge_method")
+    if application.client_type_public and (not code_challenge or not code_challenge_method):
+        return jsonify({'oauth_error': '`code_challenge_method` and `code_challenge` must be provided for Public clients.'}), 400
     if code_challenge and code_challenge_method != "S256":
-        return jsonify({'oauth_error': 'Only `S256` is supported as a `code_challenge_method`.'})
-    if code_challenge_method and not code_challenge:
-        return jsonify({'oauth_error': '`code_challenge` must be provided.'})
+        return jsonify({'oauth_error': 'Only `S256` is supported as a `code_challenge_method`.'}), 400
+
+    session["code_challenge"] = code_challenge
+    session["code_challenge_method"] = code_challenge_method
 
     return render_template("oauth.html",
                            v=v,
@@ -95,8 +100,6 @@ def oauth_authorize_prompt(v):
                            scopes_txt=scopes_txt,
                            redirect_uri=redirect_uri,
                            permanent=int(permanent),
-                           code_challenge=code_challenge,               # TODO: Store in session instead
-                           code_challenge_method=code_challenge_method, #
                            i=random_image()
                            )
 
@@ -144,13 +147,15 @@ def oauth_authorize_post(v):
         return jsonify({'oauth_error': 'state argument required'}), 400
 
     permanent = bool(int(request.values.get("permanent", 0)))
+    if permanent and application.client_type_public:
+        return jsonify({'oauth_error': '`permanent` is not yet supported for public apps.'}), 400
 
-    code_challenge = request.form.get("code_challenge")                # TODO: Get from session instead
-    code_challenge_method = request.form.get("code_challenge_method")  #
+    code_challenge = session.pop("code_challenge", None)
+    code_challenge_method = session.pop("code_challenge_method", None)
+    if application.client_type_public and (not code_challenge or not code_challenge_method):
+        return jsonify({'oauth_error': '`code_challenge_method` and `code_challenge` must be provided for Public clients.'}), 400
     if code_challenge and code_challenge_method != "S256":
-        return jsonify({'oauth_error': 'Only `S256` is supported as a `code_challenge_method`.'})
-    if code_challenge_method and not code_challenge:
-        return jsonify({'oauth_error': '`code_challenge` must be provided.'})
+        return jsonify({'oauth_error': 'Only `S256` is supported as a `code_challenge_method`.'}), 400
 
     new_auth = ClientAuth(
         oauth_client=application.id,
@@ -193,7 +198,7 @@ def oauth_grant():
     if application.client_secret != request.values.get("client_secret"):
         return jsonify({"oauth_error": "Invalid `client_id` or `client_secret`."}), 403
 
-    if request.values.get("grant_type") == "code":  # Should be "authorization_code" per https://tools.ietf.org/html/rfc6749#section-4.1.3
+    if request.values.get("grant_type") in ("code", "authorization_code"):
 
         code = request.values.get("code")
         if not code:
@@ -210,9 +215,9 @@ def oauth_grant():
 
         if application.client_type_public:
             if not auth.code_challenge:
-                raise Exception("`ClientAuth`s for public applications are expected to have a `code_challenge`.")
+                raise ValueError("`ClientAuth`s for public applications are expected to have a `code_challenge`.")
             if auth.code_challenge_method != "S256":
-                raise Exception("Only `S256` is supported as a `code_challenge_method`")
+                raise ValueError("Only `S256` is supported as a `code_challenge_method`")
             code_verifier = request.values.get("code_verifier")
             if not code_verifier:
                 return jsonify({"oauth_error": "`code_verifier` required"}), 400
@@ -221,7 +226,7 @@ def oauth_grant():
                     sha256(code_verifier.encode("utf-8")).digest()
                 )
                 .decode("utf-8")
-                .replace("=", "")
+                .rstrip("=")
             )
             if verification != auth.code_challenge:
                 return jsonify({"oauth_error": "`code_verifier` failed the `code_challenge`."}), 403
@@ -246,7 +251,7 @@ def oauth_grant():
 
         return jsonify(data)
 
-    elif request.values.get("grant_type") == "refresh":  # Should be "refresh_token" per https://tools.ietf.org/html/rfc6749#section-6
+    elif request.values.get("grant_type") in ("refresh", "refresh_token"):
 
         refresh_token = request.values.get('refresh_token')
         if not refresh_token:
@@ -259,7 +264,7 @@ def oauth_grant():
         ).first()
 
         if not auth:
-            # The refresh_token may have been stolen, so invalidate all refresh_tokens for this client_id + user_id 
+            # TODO: Invalidate all previous refresh_tokens in case the refresh_token was stolen
             return jsonify({"oauth_error": "Invalid refresh_token"}), 401
         
         auth.access_token = secrets.token_urlsafe(128)[0:128]
