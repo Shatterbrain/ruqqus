@@ -38,7 +38,7 @@ Send your user to `https://ruqqus.com/oauth/authorize`, with the following URL p
 * `redirect_uri` - The redirect URI (or one of the URIs) specified in your application information. Must not use HTTP unless using localhost (use HTTPS instead). 
 * `state` - This is your own anti-cross-site-forgery token. We don't do anything with this, except give it to the user to pass back to you later. You are responsible for generating and validating the state token.
 * `scope` - A comma-separated list of permission scopes that you are requesting. Valid scopes are: `identity`, `create`, `read`, `update`, `delete`, `vote`, and `guildmaster`.
-* `permanent` - optional. Set to `true` if you are requesting indefinite access. Omit if not.
+* `permanent` - Optional. Set to `true` if you are requesting indefinite access. Omit if not. Not yet supported for Public apps.
 
 ### Extra URL parameters for Public apps:
 
@@ -52,10 +52,9 @@ Generating a `code_challenge` in Python:
 	from base64 import urlsafe_b64encode
 	from hashlib import sha256
 
-	verifier_bytes = os.urandom(32)
-	code_verifier = urlsafe_b64encode(verifier_bytes).decode("utf-8").rstrip("=")
+	code_verifier = urlsafe_b64encode(os.urandom(32)).decode("utf-8").rstrip("=")
 	# Keep the `code_verifier`. You'll need it later.
-	code_challenge = urlsafe_b64encode(sha256(verifier_bytes).digest()).decode("utf-8").rstrip("=")
+	code_challenge = urlsafe_b64encode(sha256(code_verifier.encode("utf-8")).digest()).decode("utf-8").rstrip("=")
 </pre>
 
 If done correctly, the user will see that your application wants to access their Ruqqus account, and be prompted to approve or deny the request.
@@ -76,7 +75,7 @@ Validate the state token. How you do this is up to you.
 Make a POST request to `https://ruqqus.com/oauth/grant`. Include the following form parameters:
 
 * `client_id` - Your application's Client ID
-* `client_secret` - Confidential apps only. Your application's Client Secret
+* `client_secret` - Omit if your app is Confidential. Your application's Client Secret
 * `grant_type` - Set to the word "code"
 * `code` - The `code` parameter that was given to you in the previous step.
 
