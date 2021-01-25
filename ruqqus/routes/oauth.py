@@ -266,7 +266,7 @@ def oauth_grant():
         if not auth:
             # TODO: Invalidate all previous refresh_tokens in case the refresh_token was stolen
             return jsonify({"oauth_error": "Invalid refresh_token"}), 401
-        
+
         auth.access_token = secrets.token_urlsafe(128)[0:128]
         auth.access_token_expire_utc = int(time.time()) + 60 * 60
 
