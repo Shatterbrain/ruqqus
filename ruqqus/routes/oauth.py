@@ -264,7 +264,7 @@ def oauth_grant():
         ).first()
 
         if not auth:
-            # TODO: Invalidate all previous refresh_tokens in case the refresh_token was stolen
+            # TODO: Refresh token rotation per https://tools.ietf.org/html/draft-ietf-oauth-security-topics-13#section-4.12
             return jsonify({"oauth_error": "Invalid refresh_token"}), 401
 
         auth.access_token = secrets.token_urlsafe(128)[0:128]
